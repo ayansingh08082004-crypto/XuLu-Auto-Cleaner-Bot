@@ -57,6 +57,9 @@ from database import (
     get_all_users,
     get_settings,
     toggle_setting,
+    get_caption_template,
+    set_caption_template,
+    remove_caption_template,
     save_group_message,
     get_user_group_messages,
     delete_group_message_record,
@@ -79,6 +82,12 @@ broadcast_mode = set()
 tmdb_sessions = {}
 tmdb_message_map = {}
 remove_pages = {}
+# =========================================================
+# 📝 CAPTION TEMPLATE SYSTEM
+# =========================================================
+
+caption_waiting = set()
+caption_timeout_tasks = {}
 # =========================================================
 # 📦 DATA EXPORT / IMPORT
 # =========================================================
@@ -2310,15 +2319,21 @@ async def start(msg: types.Message):
                     callback_data="settings"
                 ),
                 InlineKeyboardButton(
-                    text="🧹 Remove Words",
-                    callback_data="remove"
+                    text="📝 Caption",
+                    callback_data="caption"
                 )
             ],
             [
                 InlineKeyboardButton(
+                    text="🧹 Remove Words",
+                    callback_data="remove"
+                ),
+                InlineKeyboardButton(
                     text="🏷 Branding",
                     callback_data="branding"
-                ),
+                )
+            ],
+            [
                 InlineKeyboardButton(
                     text="📊 Stats",
                     callback_data="stats"
@@ -3861,6 +3876,13 @@ async def settings_panel(callback: CallbackQuery):
                 ),
 
                 InlineKeyboardButton(
+                    text="📝 Caption",
+                    callback_data="caption"
+                )
+            ],
+
+            [
+                InlineKeyboardButton(
                     text="🧹 Remove Words",
                     callback_data="remove"
                 )
@@ -4241,6 +4263,286 @@ async def update_remove_words_display(
         reply_markup=buttons,
         parse_mode="HTML"
     )
+
+# =========================================================
+# 📝 CAPTION PANEL
+# =========================================================
+
+@dp.callback_query(lambda c: c.data == "caption")
+async def caption_panel(callback: CallbackQuery):
+
+    user_id = callback.message.chat.id
+    template = get_caption_template(user_id)
+
+    if template:
+        status = "🟢 Custom Caption Set"
+        preview = template
+
+        if len(preview) > 500:
+            preview = preview[:500] + "..."
+
+    else:
+        status = "🔴 Custom Caption Not Set"
+        preview = "Default caption mode is active."
+
+    buttons = InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(
+                    text="✏️ Set Caption",
+                    callback_data="caption_set"
+                )
+            ],
+            [
+                InlineKeyboardButton(
+                    text="📖 Guide",
+                    callback_data="caption_guide"
+                )
+            ],
+            [
+                InlineKeyboardButton(
+                    text="🗑 Remove Caption",
+                    callback_data="caption_remove"
+                )
+            ],
+            [
+                InlineKeyboardButton(
+                    text="🔙 Back",
+                    callback_data="settings"
+                )
+            ]
+        ]
+    )
+
+    text = (
+        "╔══════════════════╗\n"
+        "📝 <b>CAPTION SETTINGS</b>\n"
+        "╚══════════════════╝\n\n"
+
+        f"<b>Status:</b> {status}\n\n"
+
+        f"<b>Current Template:</b>\n"
+        f"<code>{html.escape(preview)}</code>\n\n"
+
+        "Use <b>Set Caption</b> to create your own "
+        "HTML caption format."
+    )
+
+    await callback.message.edit_caption(
+        caption=text,
+        reply_markup=buttons,
+        parse_mode="HTML"
+    )
+
+    await callback.answer()
+
+# =========================================================
+# ✏️ SET CAPTION
+# =========================================================
+
+@dp.callback_query(lambda c: c.data == "caption_set")
+async def caption_set(callback: CallbackQuery):
+
+    user_id = callback.from_user.id
+
+    caption_waiting.add(user_id)
+
+    # Cancel old timeout
+    old_task = caption_timeout_tasks.pop(user_id, None)
+
+    if old_task:
+        old_task.cancel()
+
+    # Start 60 second timeout
+    async def expire_caption_session():
+
+        try:
+            await asyncio.sleep(60)
+
+            if user_id in caption_waiting:
+                caption_waiting.discard(user_id)
+                caption_timeout_tasks.pop(user_id, None)
+
+                try:
+                    await callback.message.edit_caption(
+                        caption=(
+                            "⏳ <b>Caption Setup Expired</b>\n\n"
+                            "Your caption setup session has expired.\n\n"
+                            "Please click <b>✏️ Set Caption</b> again "
+                            "to create a new template."
+                        ),
+                        reply_markup=InlineKeyboardMarkup(
+                            inline_keyboard=[
+                                [
+                                    InlineKeyboardButton(
+                                        text="🔙 Back",
+                                        callback_data="caption"
+                                    )
+                                ]
+                            ]
+                        ),
+                        parse_mode="HTML"
+                    )
+
+                except Exception:
+                    pass
+
+        except asyncio.CancelledError:
+            pass
+
+        except Exception as e:
+            print(
+                f"Caption timeout error [{user_id}]:",
+                e
+            )
+
+    caption_timeout_tasks[user_id] = asyncio.create_task(
+        expire_caption_session()
+    )
+
+    await callback.message.edit_caption(
+        caption=(
+            "✏️ <b>Set Custom Caption</b>\n\n"
+
+            "Send your caption template in your next message.\n\n"
+
+            "You can use HTML formatting and variables like:\n\n"
+
+            "<code>{raw_name}</code>\n"
+            "<code>{filename}</code>\n"
+            "<code>{extension}</code>\n"
+            "<code>{caption}</code>\n"
+            "<code>{original_caption}</code>\n"
+            "<code>{branding}</code>\n"
+            "<code>{newline}</code>\n\n"
+
+            "Example:\n"
+            "<code>&lt;b&gt;{raw_name} ~ xulu {extension}&lt;/b&gt;</code>\n\n"
+
+            "⏳ <b>You have 60 seconds.</b>"
+        ),
+        reply_markup=InlineKeyboardMarkup(
+            inline_keyboard=[
+                [
+                    InlineKeyboardButton(
+                        text="❌ Cancel",
+                        callback_data="caption_cancel"
+                    )
+                ]
+            ]
+        ),
+        parse_mode="HTML"
+    )
+
+    await callback.answer()
+
+# =========================================================
+# 📝 RECEIVE CAPTION TEMPLATE
+# =========================================================
+
+@dp.message(
+    lambda msg:
+        msg.chat.type == ChatType.PRIVATE
+        and msg.from_user.id in caption_waiting
+        and msg.text is not None
+        and not msg.text.startswith("/")
+)
+async def receive_caption_template(msg: types.Message):
+
+    user_id = msg.from_user.id
+    template = msg.text.strip()
+
+    if not template:
+        await msg.reply(
+            "❌ Caption template cannot be empty."
+        )
+        return
+
+    # Cancel timeout
+    caption_waiting.discard(user_id)
+
+    timeout_task = caption_timeout_tasks.pop(
+        user_id,
+        None
+    )
+
+    if timeout_task:
+        timeout_task.cancel()
+
+    # Save template
+    set_caption_template(
+        user_id,
+        template
+    )
+
+    # Confirmation
+    buttons = InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(
+                    text="📝 Caption Settings",
+                    callback_data="caption"
+                )
+            ],
+            [
+                InlineKeyboardButton(
+                    text="⚙️ Settings",
+                    callback_data="settings"
+                )
+            ]
+        ]
+    )
+
+    await msg.answer(
+        (
+            "✅ <b>Caption Template Saved!</b>\n\n"
+
+            "<b>Your Template:</b>\n"
+            f"<code>{html.escape(template)}</code>\n\n"
+
+            "🔥 This template will now control "
+            "your output caption.\n\n"
+
+            "Use <b>📝 Caption Settings</b> to edit "
+            "or remove it."
+        ),
+        reply_markup=buttons,
+        parse_mode="HTML"
+    )
+
+# =========================================================
+# ❌ CANCEL CAPTION SETUP
+# =========================================================
+
+@dp.callback_query(lambda c: c.data == "caption_cancel")
+async def caption_cancel(callback: CallbackQuery):
+
+    user_id = callback.from_user.id
+
+    caption_waiting.discard(user_id)
+
+    timeout_task = caption_timeout_tasks.pop(
+        user_id,
+        None
+    )
+
+    if timeout_task:
+        timeout_task.cancel()
+
+    await caption_panel(callback)
+
+@dp.callback_query(lambda c: c.data == "caption_remove")
+async def caption_remove(callback: CallbackQuery):
+
+    user_id = callback.from_user.id
+
+    remove_caption_template(user_id)
+
+    await callback.answer(
+        "🗑 Caption template removed."
+    )
+
+    await caption_panel(callback)
 
 # 🔹 BRANDING PANEL
 @dp.callback_query(lambda c: c.data == "branding")

@@ -4531,35 +4531,18 @@ async def caption_panel(callback: CallbackQuery):
 async def caption_guide(callback: CallbackQuery):
 
     text = (
-        "╔══════════════════╗\n"
-        "📖 <b>CAPTION GUIDE</b>\n"
-        "╚══════════════════╝\n\n"
+        "📖 <b>CAPTION GUIDE</b>\n\n"
 
         "<b>📝 HTML FORMATTING</b>\n\n"
 
-        "<b>Bold:</b>\n"
-        "<code>&lt;b&gt;Bold Text&lt;/b&gt;</code>\n\n"
-
-        "<b>Italic:</b>\n"
-        "<code>&lt;i&gt;Italic Text&lt;/i&gt;</code>\n\n"
-
-        "<b>Underline:</b>\n"
-        "<code>&lt;u&gt;Underline&lt;/u&gt;</code>\n\n"
-
-        "<b>Strike:</b>\n"
-        "<code>&lt;s&gt;Strike&lt;/s&gt;</code>\n\n"
-
-        "<b>Mono:</b>\n"
-        "<code>&lt;code&gt;Mono Text&lt;/code&gt;</code>\n\n"
-
-        "<b>Code Box:</b>\n"
-        "<code>&lt;pre&gt;Code Box&lt;/pre&gt;</code>\n\n"
-
-        "<b>Quote:</b>\n"
-        "<code>&lt;blockquote&gt;Quote&lt;/blockquote&gt;</code>\n\n"
-
-        "<b>Link:</b>\n"
-        "<code>&lt;a href=\"URL\"&gt;Link&lt;/a&gt;</code>\n\n"
+        "<b>Bold:</b> <code>&lt;b&gt;Bold Text&lt;/b&gt;</code>\n"
+        "<b>Italic:</b> <code>&lt;i&gt;Italic Text&lt;/i&gt;</code>\n"
+        "<b>Underline:</b> <code>&lt;u&gt;Underline&lt;/u&gt;</code>\n"
+        "<b>Strike:</b> <code>&lt;s&gt;Strike&lt;/s&gt;</code>\n"
+        "<b>Mono:</b> <code>&lt;code&gt;Mono Text&lt;/code&gt;</code>\n"
+        "<b>Code Box:</b> <code>&lt;pre&gt;Code Box&lt;/pre&gt;</code>\n"
+        "<b>Quote:</b> <code>&lt;blockquote&gt;Quote&lt;/blockquote&gt;</code>\n"
+        "<b>Link:</b> <code>&lt;a href=\"URL\"&gt;Link&lt;/a&gt;</code>\n\n"
 
         "━━━━━━━━━━━━━━━━━━\n\n"
 
@@ -4576,9 +4559,7 @@ async def caption_guide(callback: CallbackQuery):
         "━━━━━━━━━━━━━━━━━━\n\n"
 
         "<b>💡 EXAMPLE</b>\n\n"
-
-        "<code>&lt;b&gt;{raw_name} ~ xulu {extension}&lt;/b&gt;</code>\n\n"
-
+        "<code>&lt;b&gt;{raw_name} ~ xulu {extension}&lt;/b&gt;</code>"
         "You can combine HTML tags and variables "
         "to create your own caption format."
     )

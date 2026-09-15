@@ -89,6 +89,7 @@ remove_pages = {}
 
 caption_waiting = set()
 caption_timeout_tasks = {}
+caption_setup_messages = {}
 # =========================================================
 # 📦 DATA EXPORT / IMPORT
 # =========================================================
@@ -232,17 +233,36 @@ class FormattingCleaner(HTMLParser):
         )
 
     def handle_data(self, data):
+        if not data:
+            return
+
+        leading_space = data[:len(data) - len(data.lstrip())]
+        trailing_space = data[len(data.rstrip()):]
+
+        core = data.strip()
+
+        if not core:
+            self.output.append(data)
+            return
+
         cleaned = clean_text(
-            data,
+            core,
             self.words,
             "",
             self.settings,
             add_branding=False
         )
 
-        self.output.append(
-            html.escape(cleaned or "")
+        if not cleaned:
+            return
+
+        result = (
+            leading_space
+            + cleaned
+            + trailing_space
         )
+
+        self.output.append(html.escape(result))
 
     def get_result(self):
         return "".join(self.output)
@@ -5593,55 +5613,219 @@ async def owner_panel(msg: types.Message):
     )
 
 
-# 🔹 ADMIN USERS
+# =========================================================
+# 👑 OWNER PANEL — INLINE NAVIGATION
+# =========================================================
+
+# 🔹 OWNER PANEL
+@dp.message(Command("panel"))
+async def owner_panel(msg: types.Message):
+
+    # Group me kuch bhi reply mat karo
+    if msg.chat.type != "private":
+        return
+
+    if msg.from_user.id != OWNER_ID:
+        await msg.reply(
+            f"Unknown command.\nContact: {DEV_CONTACT}"
+        )
+        return
+
+    panel = InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(
+                    text="📢 Broadcast",
+                    callback_data="admin_broadcast"
+                ),
+                InlineKeyboardButton(
+                    text="👥 Users",
+                    callback_data="admin_users"
+                )
+            ],
+            [
+                InlineKeyboardButton(
+                    text="📊 Bot Stats",
+                    callback_data="admin_stats"
+                ),
+                InlineKeyboardButton(
+                    text="⚡ Status",
+                    callback_data="admin_status"
+                )
+            ]
+        ]
+    )
+
+    text = (
+        "╔══════════════════════════╗\n"
+        "👑 <b>XULU OWNER PANEL</b>\n"
+        "╚══════════════════════════╝\n\n"
+        "🛠 <b>Control Center</b>\n\n"
+        "📢 Manage broadcasts\n"
+        "👥 View users\n"
+        "📊 Monitor statistics\n"
+        "⚡ Check system status\n\n"
+        "━━━━━━━━━━━━━━━━━━━━\n"
+        "🟢 <b>System Online</b>"
+    )
+
+    await msg.answer(
+        text,
+        parse_mode="HTML",
+        reply_markup=panel
+    )
+
+
+# =========================================================
+# 👥 ADMIN USERS
+# =========================================================
+
 @dp.callback_query(lambda c: c.data == "admin_users")
 async def admin_users(callback: CallbackQuery):
 
+    if callback.from_user.id != OWNER_ID:
+        return
+
     users = len(get_all_users())
 
-    await callback.message.answer(
-        f"👥 Total Saved Users:\n\n{users}"
+    buttons = InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(
+                    text="🔄 Refresh",
+                    callback_data="admin_users"
+                )
+            ],
+            [
+                InlineKeyboardButton(
+                    text="🔙 Back",
+                    callback_data="owner_panel"
+                )
+            ]
+        ]
+    )
+
+    text = (
+        "╔══════════════════════════╗\n"
+        "👥 <b>USER MANAGEMENT</b>\n"
+        "╚══════════════════════════╝\n\n"
+        f"👤 <b>Total Users</b>\n"
+        f"<code>{users}</code>\n\n"
+        "🟢 User database is active."
+    )
+
+    await callback.message.edit_text(
+        text,
+        parse_mode="HTML",
+        reply_markup=buttons
     )
 
     await callback.answer()
 
 
-# 🔹 ADMIN STATUS
+# =========================================================
+# ⚡ ADMIN STATUS
+# =========================================================
+
 @dp.callback_query(lambda c: c.data == "admin_status")
 async def admin_status(callback: CallbackQuery):
 
-    text = (
-        "⚡ Bot Status\n\n"
-        "🟢 Online\n"
-        "🔥 MongoDB Connected\n"
-        "🌐 Render Active"
+    if callback.from_user.id != OWNER_ID:
+        return
+
+    buttons = InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(
+                    text="🔄 Refresh",
+                    callback_data="admin_status"
+                )
+            ],
+            [
+                InlineKeyboardButton(
+                    text="🔙 Back",
+                    callback_data="owner_panel"
+                )
+            ]
+        ]
     )
 
-    await callback.message.answer(text)
+    text = (
+        "╔══════════════════════════╗\n"
+        "⚡ <b>SYSTEM STATUS</b>\n"
+        "╚══════════════════════════╝\n\n"
+        "🟢 <b>Bot</b> — Online\n"
+        "🟢 <b>Database</b> — Connected\n"
+        "🟢 <b>MongoDB</b> — Connected\n"
+        "🟢 <b>Server</b> — Active\n\n"
+        "━━━━━━━━━━━━━━━━━━━━\n"
+        "✅ <b>All systems operational</b>"
+    )
+
+    await callback.message.edit_text(
+        text,
+        parse_mode="HTML",
+        reply_markup=buttons
+    )
 
     await callback.answer()
 
 
-# 🔹 ADMIN STATS
+# =========================================================
+# 📊 ADMIN STATS
+# =========================================================
+
 @dp.callback_query(lambda c: c.data == "admin_stats")
 async def admin_stats(callback: CallbackQuery):
 
+    if callback.from_user.id != OWNER_ID:
+        return
+
     users = len(get_all_users())
 
-    text = (
-        "📊 Advanced Bot Statistics\n\n"
-        f"👥 Total Users: {users}\n"
-        "⚡ System: Active\n"
-        "🧹 Cleaner: Running\n"
-        "🌐 Database: Connected"
+    buttons = InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(
+                    text="🔄 Refresh",
+                    callback_data="admin_stats"
+                )
+            ],
+            [
+                InlineKeyboardButton(
+                    text="🔙 Back",
+                    callback_data="owner_panel"
+                )
+            ]
+        ]
     )
 
-    await callback.message.answer(text)
+    text = (
+        "╔══════════════════════════╗\n"
+        "📊 <b>BOT STATISTICS</b>\n"
+        "╚══════════════════════════╝\n\n"
+        "👥 <b>Total Users</b>\n"
+        f"<code>{users}</code>\n\n"
+        "⚡ <b>System</b> — Active\n"
+        "🧹 <b>Cleaner</b> — Running\n"
+        "🗄 <b>Database</b> — Connected\n\n"
+        "━━━━━━━━━━━━━━━━━━━━\n"
+        "🟢 <b>Everything is running normally</b>"
+    )
+
+    await callback.message.edit_text(
+        text,
+        parse_mode="HTML",
+        reply_markup=buttons
+    )
 
     await callback.answer()
 
 
-# 🔹 ADMIN BROADCAST BUTTON
+# =========================================================
+# 📢 ADMIN BROADCAST
+# =========================================================
+
 @dp.callback_query(lambda c: c.data == "admin_broadcast")
 async def admin_broadcast(callback: CallbackQuery):
 
@@ -5650,11 +5834,132 @@ async def admin_broadcast(callback: CallbackQuery):
 
     broadcast_mode.add(callback.from_user.id)
 
-    await callback.message.answer(
-        "📢 Send the message you want to broadcast."
+    buttons = InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(
+                    text="❌ Cancel",
+                    callback_data="admin_broadcast_cancel"
+                )
+            ],
+            [
+                InlineKeyboardButton(
+                    text="🔙 Back",
+                    callback_data="owner_panel"
+                )
+            ]
+        ]
+    )
+
+    text = (
+        "╔══════════════════════════╗\n"
+        "📢 <b>BROADCAST CENTER</b>\n"
+        "╚══════════════════════════╝\n\n"
+        "Send the message you want to broadcast.\n\n"
+        "You can send:\n"
+        "• 📝 Text\n"
+        "• 🖼 Photo\n"
+        "• 🎬 Video\n"
+        "• 📄 Document\n"
+        "• 🎵 Audio\n"
+        "• 🎞 Animation\n"
+        "• 📦 Other supported media\n\n"
+        "━━━━━━━━━━━━━━━━━━━━\n"
+        "⚠️ <b>Cancel</b> to return without sending."
+    )
+
+    await callback.message.edit_text(
+        text,
+        parse_mode="HTML",
+        reply_markup=buttons
     )
 
     await callback.answer()
+
+
+# =========================================================
+# ❌ CANCEL BROADCAST
+# =========================================================
+
+@dp.callback_query(lambda c: c.data == "admin_broadcast_cancel")
+async def admin_broadcast_cancel(callback: CallbackQuery):
+
+    if callback.from_user.id != OWNER_ID:
+        return
+
+    broadcast_mode.discard(
+        callback.from_user.id
+    )
+
+    await owner_panel_from_callback(callback)
+
+    await callback.answer()
+
+
+# =========================================================
+# 🔙 OWNER PANEL — BACK
+# =========================================================
+
+@dp.callback_query(lambda c: c.data == "owner_panel")
+async def owner_panel_back(callback: CallbackQuery):
+
+    if callback.from_user.id != OWNER_ID:
+        return
+
+    await owner_panel_from_callback(callback)
+
+    await callback.answer()
+
+
+# =========================================================
+# 👑 OWNER PANEL DISPLAY HELPER
+# =========================================================
+
+async def owner_panel_from_callback(callback: CallbackQuery):
+
+    panel = InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(
+                    text="📢 Broadcast",
+                    callback_data="admin_broadcast"
+                ),
+                InlineKeyboardButton(
+                    text="👥 Users",
+                    callback_data="admin_users"
+                )
+            ],
+            [
+                InlineKeyboardButton(
+                    text="📊 Bot Stats",
+                    callback_data="admin_stats"
+                ),
+                InlineKeyboardButton(
+                    text="⚡ Status",
+                    callback_data="admin_status"
+                )
+            ]
+        ]
+    )
+
+    text = (
+        "╔══════════════════════════╗\n"
+        "👑 <b>XULU OWNER PANEL</b>\n"
+        "╚══════════════════════════╝\n\n"
+        "🛠 <b>Control Center</b>\n\n"
+        "📢 Manage broadcasts\n"
+        "👥 View users\n"
+        "📊 Monitor statistics\n"
+        "⚡ Check system status\n\n"
+        "━━━━━━━━━━━━━━━━━━━━\n"
+        "🟢 <b>System Online</b>"
+    )
+
+    await callback.message.edit_text(
+        text,
+        parse_mode="HTML",
+        reply_markup=panel
+    )
 
 
 # 🔹 UNKNOWN COMMAND

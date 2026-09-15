@@ -295,7 +295,82 @@ def clean_html_preserving_formatting(
     parser.feed(formatted_html)
     parser.close()
 
-    return parser.get_result()
+    result = parser.get_result()
+
+    # ---------------------------------------------------------
+    # Remove saved words/sentences across HTML formatting tags
+    # ---------------------------------------------------------
+    if words:
+        tag_pattern = re.compile(r"<[^>]*>")
+        tag_map = {}
+
+        def mask_tag(match):
+            index = len(tag_map)
+            marker = chr(0xE000 + index)
+            tag_map[marker] = match.group(0)
+            return marker
+
+        masked = tag_pattern.sub(
+            mask_tag,
+            result
+        )
+
+        for word in words:
+            word = word.strip()
+
+            if not word:
+                continue
+
+            # Allow HTML tags between characters of the saved word
+            pattern_parts = []
+
+            for char in word:
+                pattern_parts.append(
+                    re.escape(char)
+                    + r"[\uE000-\uF8FF]*"
+                )
+
+            pattern = re.compile(
+                "".join(pattern_parts),
+                re.IGNORECASE
+            )
+
+            masked = pattern.sub(
+                "",
+                masked
+            )
+
+        # Restore HTML tags
+        for marker, tag in tag_map.items():
+            masked = masked.replace(
+                marker,
+                tag
+            )
+
+        result = masked
+
+    # Remove empty formatting tags left after filtering
+    result = re.sub(
+        r"<(b|i|u|s|code|pre|blockquote|tg-spoiler)>\s*</\1>",
+        "",
+        result,
+        flags=re.IGNORECASE
+    )
+
+    # Clean extra spaces and blank lines
+    result = re.sub(
+        r"[ \t]{2,}",
+        " ",
+        result
+    )
+
+    result = re.sub(
+        r"\n{3,}",
+        "\n\n",
+        result
+    )
+
+    return result.strip()
 
 # =========================================================
 # 👋 WELCOME / GOODBYE SYSTEM

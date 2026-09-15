@@ -249,7 +249,8 @@ def get_settings(user_id):
             "cleaner": True,
             "links": True,
             "tags": True,
-            "hashtags": True
+            "hashtags": True,
+            "caption_template": ""
         }
 
         settings_col.insert_one(
@@ -276,6 +277,34 @@ def toggle_setting(user_id, key):
     )
 
     return new_value
+
+def get_caption_template(user_id):
+    settings = get_settings(user_id)
+    return settings.get("caption_template", "")
+
+
+def set_caption_template(user_id, template):
+    settings_col.update_one(
+        {"user_id": user_id},
+        {
+            "$set": {
+                "caption_template": template
+            }
+        },
+        upsert=True
+    )
+
+
+def remove_caption_template(user_id):
+    settings_col.update_one(
+        {"user_id": user_id},
+        {
+            "$set": {
+                "caption_template": ""
+            }
+        },
+        upsert=True
+    )
 
 # =========================================================
 # 📦 DATA EXPORT / IMPORT SYSTEM

@@ -221,20 +221,22 @@ class FormattingCleaner(HTMLParser):
     def handle_starttag(self, tag, attrs):
         if tag.lower() == "a":
             self.inside_link = True
-            return
 
-        self.output.append(
-            self.get_starttag_text()
-        )
+            if not self.settings.get("links", True):
+                self.output.append(
+                    self.get_starttag_text()
+                )
+
+            return
 
     def handle_endtag(self, tag):
         if tag.lower() == "a":
             self.inside_link = False
-            return
 
-        self.output.append(
-            f"</{tag}>"
-        )
+            if not self.settings.get("links", True):
+                self.output.append("</a>")
+
+            return
 
     def handle_startendtag(self, tag, attrs):
         self.output.append(
@@ -4133,10 +4135,16 @@ async def settings_panel(callback: CallbackQuery):
         "🔥 Premium Inline System"
     )
 
-    await callback.message.edit_caption(
-        caption=text,
-        reply_markup=buttons
-    )
+    if callback.message.caption is not None:
+        await callback.message.edit_caption(
+            caption=text,
+            reply_markup=buttons
+        )
+    else:
+        await callback.message.edit_text(
+            text=text,
+            reply_markup=buttons
+        )
 
     await callback.answer()
 
@@ -4584,10 +4592,18 @@ async def caption_guide(callback: CallbackQuery):
         ]
     )
 
-    await callback.message.edit_caption(
-        caption=text,
-        reply_markup=buttons
-    )
+    if callback.message.caption is not None:
+        await callback.message.edit_caption(
+            caption=text,
+            reply_markup=buttons,
+            parse_mode="HTML"
+        )
+    else:
+        await callback.message.edit_text(
+            text=text,
+            reply_markup=buttons,
+            parse_mode="HTML"
+        )
 
     await callback.answer()
 
@@ -4599,6 +4615,9 @@ async def caption_guide(callback: CallbackQuery):
 async def caption_set(callback: CallbackQuery):
 
     user_id = callback.from_user.id
+
+    # Save the original Caption Settings callback
+    caption_setup_messages[user_id] = callback
 
     caption_waiting.add(user_id)
 
@@ -4735,40 +4754,14 @@ async def receive_caption_template(msg: types.Message):
     except Exception:
         pass
 
-    # Confirmation
-    buttons = InlineKeyboardMarkup(
-        inline_keyboard=[
-            [
-                InlineKeyboardButton(
-                    text="📝 Caption Settings",
-                    callback_data="caption"
-                )
-            ],
-            [
-                InlineKeyboardButton(
-                    text="⚙️ Settings",
-                    callback_data="settings"
-                )
-            ]
-        ]
+     # Return to Caption Settings panel
+    setup_callback = caption_setup_messages.pop(
+        user_id,
+        None
     )
 
-    await msg.answer(
-        (
-            "✅ <b>Caption Template Saved!</b>\n\n"
-
-            "<b>Your Template:</b>\n"
-            f"<code>{html.escape(template)}</code>\n\n"
-
-            "🔥 This template will now control "
-            "your output caption.\n\n"
-
-            "Use <b>📝 Caption Settings</b> to edit "
-            "or remove it."
-        ),
-        reply_markup=buttons,
-        parse_mode="HTML"
-    )
+    if setup_callback:
+        await caption_panel(setup_callback)
 
 # =========================================================
 # ❌ CANCEL CAPTION SETUP

@@ -1,7 +1,13 @@
 import re
 
 
-def clean_text(text, words=None, tag="", settings=None):
+def clean_text(
+    text,
+    words=None,
+    tag="",
+    settings=None,
+    add_branding=True
+):
 
     if text is None:
         text = ""
@@ -72,7 +78,7 @@ def clean_text(text, words=None, tag="", settings=None):
     cleaned = cleaned.strip()
 
     # 🏷 ADD BRANDING
-    if tag:
+    if add_branding and tag:
         cleaned += f"\n\n{tag}"
 
     return cleaned

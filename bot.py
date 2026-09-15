@@ -5539,6 +5539,10 @@ async def main_handler(msg: types.Message):
         for user_id in users:
 
             try:
+                chat = await bot.get_chat(user_id)
+
+                if chat.type == "channel":
+                    continue
 
                 await bot.copy_message(
                     chat_id=user_id,
@@ -5551,7 +5555,6 @@ async def main_handler(msg: types.Message):
                 await asyncio.sleep(0.05)
 
             except Exception:
-
                 failed += 1
 
         await msg.reply(

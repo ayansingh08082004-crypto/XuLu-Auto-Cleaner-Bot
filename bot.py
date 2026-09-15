@@ -6,6 +6,7 @@ import os
 import aiohttp
 import json
 import tempfile
+from html.parser import HTMLParser
 import html
 from datetime import datetime, timezone, timedelta
 from forcejoin import (
@@ -94,6 +95,176 @@ caption_timeout_tasks = {}
 
 upload_waiting = {}
 upload_timeout_tasks = {}
+
+# =========================================================
+# 📝 TELEGRAM CAPTION FORMATTER
+# =========================================================
+
+def telegram_text_to_html(text, entities=None):
+    if not text:
+        return ""
+
+    if not entities:
+        return html.escape(text)
+
+    entities = sorted(
+        entities,
+        key=lambda e: (e.offset, -e.length)
+    )
+
+    def utf16_len(s):
+        return len(s.encode("utf-16-le")) // 2
+
+    def utf16_to_py_index(text, offset):
+        current = 0
+
+        for i, char in enumerate(text):
+            current += utf16_len(char)
+
+            if current >= offset:
+                return i + 1
+
+        return len(text)
+
+    result = []
+    position = 0
+
+    for entity in entities:
+
+        start = utf16_to_py_index(
+            text,
+            entity.offset
+        )
+
+        end = utf16_to_py_index(
+            text,
+            entity.offset + entity.length
+        )
+
+        if start < position:
+            continue
+
+        if start > position:
+            result.append(
+                html.escape(text[position:start])
+            )
+
+        content = html.escape(text[start:end])
+
+        entity_type = entity.type
+
+        if entity_type == "bold":
+            content = f"<b>{content}</b>"
+
+        elif entity_type == "italic":
+            content = f"<i>{content}</i>"
+
+        elif entity_type == "underline":
+            content = f"<u>{content}</u>"
+
+        elif entity_type == "strikethrough":
+            content = f"<s>{content}</s>"
+
+        elif entity_type == "spoiler":
+            content = f"<tg-spoiler>{content}</tg-spoiler>"
+
+        elif entity_type == "code":
+            content = f"<code>{content}</code>"
+
+        elif entity_type == "pre":
+            content = f"<pre>{content}</pre>"
+
+        elif entity_type == "blockquote":
+            content = f"<blockquote>{content}</blockquote>"
+
+        elif entity_type == "text_link":
+            url = entity.url or ""
+            content = (
+                f'<a href="{html.escape(url, quote=True)}">'
+                f"{content}</a>"
+            )
+
+        elif entity_type == "text_mention":
+            user = entity.user
+
+            if user:
+                content = (
+                    f'<a href="tg://user?id={user.id}">'
+                    f"{content}</a>"
+                )
+
+        result.append(content)
+
+        position = end
+
+    if position < len(text):
+        result.append(
+            html.escape(text[position:])
+        )
+
+    return "".join(result)
+
+# =========================================================
+# 🧹 CLEAN HTML WHILE PRESERVING TELEGRAM FORMATTING
+# =========================================================
+
+class FormattingCleaner(HTMLParser):
+
+    def __init__(self, words, settings):
+        super().__init__(convert_charrefs=True)
+        self.words = words
+        self.settings = settings
+        self.output = []
+
+    def handle_starttag(self, tag, attrs):
+        self.output.append(
+            self.get_starttag_text()
+        )
+
+    def handle_endtag(self, tag):
+        self.output.append(
+            f"</{tag}>"
+        )
+
+    def handle_startendtag(self, tag, attrs):
+        self.output.append(
+            self.get_starttag_text()
+        )
+
+    def handle_data(self, data):
+        cleaned = clean_text(
+            data,
+            self.words,
+            "",
+            self.settings,
+            add_branding=False
+        )
+
+        self.output.append(
+            html.escape(cleaned or "")
+        )
+
+    def get_result(self):
+        return "".join(self.output)
+
+
+def clean_html_preserving_formatting(
+    formatted_html,
+    words,
+    settings
+):
+    if not formatted_html:
+        return ""
+
+    parser = FormattingCleaner(
+        words,
+        settings
+    )
+
+    parser.feed(formatted_html)
+    parser.close()
+
+    return parser.get_result()
 
 # =========================================================
 # 👋 WELCOME / GOODBYE SYSTEM
@@ -4336,6 +4507,80 @@ async def caption_panel(callback: CallbackQuery):
 
     await callback.answer()
 
+@dp.callback_query(lambda c: c.data == "caption_guide")
+async def caption_guide(callback: CallbackQuery):
+
+    text = (
+        "╔══════════════════╗\n"
+        "📖 <b>CAPTION GUIDE</b>\n"
+        "╚══════════════════╝\n\n"
+
+        "<b>📝 HTML FORMATTING</b>\n\n"
+
+        "<b>Bold:</b>\n"
+        "<code>&lt;b&gt;Bold Text&lt;/b&gt;</code>\n\n"
+
+        "<b>Italic:</b>\n"
+        "<code>&lt;i&gt;Italic Text&lt;/i&gt;</code>\n\n"
+
+        "<b>Underline:</b>\n"
+        "<code>&lt;u&gt;Underline&lt;/u&gt;</code>\n\n"
+
+        "<b>Strike:</b>\n"
+        "<code>&lt;s&gt;Strike&lt;/s&gt;</code>\n\n"
+
+        "<b>Mono:</b>\n"
+        "<code>&lt;code&gt;Mono Text&lt;/code&gt;</code>\n\n"
+
+        "<b>Code Box:</b>\n"
+        "<code>&lt;pre&gt;Code Box&lt;/pre&gt;</code>\n\n"
+
+        "<b>Quote:</b>\n"
+        "<code>&lt;blockquote&gt;Quote&lt;/blockquote&gt;</code>\n\n"
+
+        "<b>Link:</b>\n"
+        "<code>&lt;a href=\"URL\"&gt;Link&lt;/a&gt;</code>\n\n"
+
+        "━━━━━━━━━━━━━━━━━━\n\n"
+
+        "<b>🔤 VARIABLES</b>\n\n"
+
+        "<code>{raw_name}</code> → Filename without extension\n"
+        "<code>{extension}</code> → File extension\n"
+        "<code>{filename}</code> → Full original filename\n"
+        "<code>{caption}</code> → Cleaned caption\n"
+        "<code>{original_caption}</code> → Original caption\n"
+        "<code>{branding}</code> → Saved branding\n"
+        "<code>{newline}</code> → New line\n\n"
+
+        "━━━━━━━━━━━━━━━━━━\n\n"
+
+        "<b>💡 EXAMPLE</b>\n\n"
+
+        "<code>&lt;b&gt;{raw_name} ~ xulu {extension}&lt;/b&gt;</code>\n\n"
+
+        "You can combine HTML tags and variables "
+        "to create your own caption format."
+    )
+
+    buttons = InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(
+                    text="🔙 Back",
+                    callback_data="caption"
+                )
+            ]
+        ]
+    )
+
+    await callback.message.edit_caption(
+        caption=text,
+        reply_markup=buttons
+    )
+
+    await callback.answer()
+
 # =========================================================
 # ✏️ SET CAPTION
 # =========================================================
@@ -4838,31 +5083,137 @@ async def process(msg: types.Message):
 
     tag = get_tag(user_id)
     words = get_words(user_id)
+    settings = get_settings(user_id)
+
+    # =====================================================
+    # 📝 CAPTION / TEXT DATA
+    # =====================================================
 
     text = msg.caption or msg.text or ""
 
-    settings = get_settings(user_id)
+    entities = (
+        msg.caption_entities
+        if msg.caption is not None
+        else msg.entities
+    )
 
-    # CLEAN SYSTEM
+    # Original caption with Telegram formatting preserved
+    original_html = telegram_text_to_html(
+        text,
+        entities
+    )
+
+    # =====================================================
+    # 📝 CONVERT CLEANED TEXT TO HTML
+    #    PRESERVE TELEGRAM FORMATTING
+    # =====================================================
+
     if settings["cleaner"]:
 
-        cleaned = clean_text(
-            text,
+        cleaned_html = clean_html_preserving_formatting(
+            original_html,
             words,
-            tag,
             settings
         )
 
     else:
 
-        cleaned = text
+        # Cleaner OFF → original Telegram formatting 그대로
+        cleaned_html = original_html
+
+    # =====================================================
+    # 🏷 CUSTOM CAPTION TEMPLATE
+    # =====================================================
+
+    caption_template = get_caption_template(user_id)
+
+    if caption_template:
+
+        # File name information
+        if msg.document:
+            filename = (
+                msg.document.file_name
+                or f"file_{msg.document.file_unique_id}"
+            )
+
+        elif msg.video:
+            filename = (
+                msg.video.file_name
+                or f"video_{msg.video.file_unique_id}.mp4"
+            )
+
+        elif msg.photo:
+            filename = (
+                f"photo_{msg.photo[-1].file_unique_id}.jpg"
+            )
+
+        else:
+            filename = ""
+
+        extension = os.path.splitext(filename)[1]
+
+        raw_name = os.path.splitext(filename)[0]
+
+        # Branding is plain user data, so escape it
+        branding_html = html.escape(
+            str(tag or "")
+        )
+
+        # Replace template variables
+        cleaned = caption_template
+
+        cleaned = cleaned.replace(
+            "{raw_name}",
+            html.escape(raw_name)
+        )
+
+        cleaned = cleaned.replace(
+            "{extension}",
+            html.escape(extension)
+        )
+
+        cleaned = cleaned.replace(
+            "{filename}",
+            html.escape(filename)
+        )
+
+        cleaned = cleaned.replace(
+            "{caption}",
+            cleaned_html
+        )
+
+        cleaned = cleaned.replace(
+            "{original_caption}",
+            original_html
+        )
+
+        cleaned = cleaned.replace(
+            "{branding}",
+            branding_html
+        )
+
+        cleaned = cleaned.replace(
+            "{newline}",
+            "\n"
+        )
+
+    # =====================================================
+    # 🔥 DEFAULT CAPTION MODE
+    # =====================================================
+
+    else:
+
+        cleaned = cleaned_html
 
         if tag:
-            cleaned += f"\n\n{tag}"
+            cleaned += (
+                "\n\n"
+                + html.escape(str(tag))
+            )
 
     # SAFETY FIX
     if cleaned is None:
-        cleaned = text
+        cleaned = ""
 
     # 🔥 Detect removed words
     removed_now = []
@@ -4887,6 +5238,7 @@ async def process(msg: types.Message):
                 msg.chat.id,
                 msg.video.file_id,
                 caption=cleaned,
+                parse_mode="HTML",
             )
 
         elif msg.document:
@@ -4895,6 +5247,7 @@ async def process(msg: types.Message):
                 msg.chat.id,
                 msg.document.file_id,
                 caption=cleaned,
+                parse_mode="HTML",
             )
 
         elif msg.photo:
@@ -4903,13 +5256,15 @@ async def process(msg: types.Message):
                 msg.chat.id,
                 msg.photo[-1].file_id,
                 caption=cleaned,
+                parse_mode="HTML",
             )
 
         elif msg.text:
 
             await bot.send_message(
                 msg.chat.id,
-                cleaned
+                cleaned,
+                parse_mode="HTML"
             )
 
     else:
@@ -4947,13 +5302,17 @@ async def process(msg: types.Message):
         # 🔥 SEND CLEANED CONTENT
         if msg.text:
 
-            await msg.reply(cleaned)
+            await msg.reply(
+                cleaned,
+                parse_mode="HTML"
+            )
 
         elif msg.video:
 
             await msg.reply_video(
                 msg.video.file_id,
                 caption=cleaned,
+                parse_mode="HTML",
             )
 
         elif msg.document:
@@ -4961,6 +5320,7 @@ async def process(msg: types.Message):
             await msg.reply_document(
                 msg.document.file_id,
                 caption=cleaned,
+                parse_mode="HTML",
             )
 
         elif msg.photo:
@@ -4968,6 +5328,7 @@ async def process(msg: types.Message):
             await msg.reply_photo(
                 msg.photo[-1].file_id,
                 caption=cleaned,
+                parse_mode="HTML",
             )
             
 # 🔹 SEND CLEANING SUMMARY

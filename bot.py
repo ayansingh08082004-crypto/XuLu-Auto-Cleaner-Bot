@@ -4739,6 +4739,11 @@ async def receive_caption_template(msg: types.Message):
         user_id,
         template
     )
+    # Delete user's template message
+    try:
+        await msg.delete()
+    except Exception:
+        pass
 
     # Confirmation
     buttons = InlineKeyboardMarkup(

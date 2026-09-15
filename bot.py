@@ -216,13 +216,22 @@ class FormattingCleaner(HTMLParser):
         self.words = words
         self.settings = settings
         self.output = []
+        self.inside_link = False
 
     def handle_starttag(self, tag, attrs):
+        if tag.lower() == "a":
+            self.inside_link = True
+            return
+
         self.output.append(
             self.get_starttag_text()
         )
 
     def handle_endtag(self, tag):
+        if tag.lower() == "a":
+            self.inside_link = False
+            return
+
         self.output.append(
             f"</{tag}>"
         )
